@@ -23,18 +23,24 @@
 #
 # The builder image will be used to uncompress the tar.gz file with the Java Runtime.
 
-FROM oraclelinux:7-slim as builder
+FROM ubuntu:latest as builder
 
 MAINTAINER Aurelio Garcia-Ribeyro <aurelio.garciaribeyro@oracle.com>
 
 RUN set -eux; \
-	yum install -y \
+	apt-get update \
+  	&& DEBIAN_FRONTEND=noninteractive apt-get install -y \
 		gzip \
 		tar \
-	; \
-	rm -rf /var/cache/yum
+		locales \
+	&& apt-get clean
 	
 # Default to UTF-8 file.encoding
+RUN set -eux; \
+	sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+    dpkg-reconfigure --frontend=noninteractive locales && \
+    update-locale LANG=en_US.UTF-8
+
 ENV LANG en_US.UTF-8
 
 
@@ -54,10 +60,24 @@ RUN set -eux; \
 	rm /tmp/jdk.tgz; 
 	
 ## Get a fresh version of SLIM for the final image	
-FROM oraclelinux:7-slim
+FROM ubuntu:latest
 
 # Default to UTF-8 file.encoding
+RUN set -eux; \
+	apt-get update \
+	&& DEBIAN_FRONTEND=noninteractive apt-get install -y \
+		locales
+
+RUN set -eux; \
+	sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+    dpkg-reconfigure --frontend=noninteractive locales && \
+    update-locale LANG=en_US.UTF-8
+
 ENV LANG en_US.UTF-8
+
+RUN set -eux; \
+	apt-get update \
+  	&& DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 
 ENV JAVA_VERSION=15.0.1 \
 	JAVA_HOME=/usr/java/jdk-15
@@ -68,9 +88,9 @@ ENV	PATH $JAVA_HOME/bin:$PATH
 COPY --from=builder $JAVA_HOME $JAVA_HOME
 
 RUN set -eux; \
-	yum install -y \
+  	DEBIAN_FRONTEND=noninteractive apt-get install -y \
 # JDK assumes freetype is available		
-		freetype fontconfig \
+		libfreetype6 libfreetype6-dev fontconfig \
 	; \
 	rm -rf /var/cache/yum; \
 	ln -sfT "$JAVA_HOME" /usr/java/default; \
@@ -78,7 +98,7 @@ RUN set -eux; \
 	for bin in "$JAVA_HOME/bin/"*; do \
 		base="$(basename "$bin")"; \
 		[ ! -e "/usr/bin/$base" ]; \
-		alternatives --install "/usr/bin/$base" "$base" "$bin" 20000; \
+		update-alternatives --install "/usr/bin/$base" "$base" "$bin" 20000; \
 	done; \
 # -Xshare:dump will create a CDS archive to improve startup in subsequent runs	
 	java -Xshare:dump; \
